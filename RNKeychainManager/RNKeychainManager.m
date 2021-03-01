@@ -338,14 +338,16 @@ RCT_EXPORT_METHOD(getGenericPasswordForOptions:(NSDictionary * __nullable)option
 {
   NSString *service = serviceValue(options);
   NSString *authenticationPrompt = authenticationPromptValue(options);
-
+  NSString *accessGroup = accessGroupValue(options);
+  NSLog(@"fsfs");
   NSDictionary *query = @{
     (__bridge NSString *)kSecClass: (__bridge id)(kSecClassGenericPassword),
     (__bridge NSString *)kSecAttrService: service,
     (__bridge NSString *)kSecReturnAttributes: (__bridge id)kCFBooleanTrue,
     (__bridge NSString *)kSecReturnData: (__bridge id)kCFBooleanTrue,
     (__bridge NSString *)kSecMatchLimit: (__bridge NSString *)kSecMatchLimitOne,
-    (__bridge NSString *)kSecUseOperationPrompt: authenticationPrompt
+    (__bridge NSString *)kSecUseOperationPrompt: authenticationPrompt,
+    (__bridge NSString *)kSecAttrAccessGroup: accessGroup,
   };
 
   // Look up service in the keychain
