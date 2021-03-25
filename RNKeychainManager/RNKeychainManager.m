@@ -254,8 +254,11 @@ SecAccessControlCreateFlags accessControlValue(NSDictionary *options)
     (__bridge NSString *)kSecClass: (__bridge id)(kSecClassGenericPassword),
     (__bridge NSString *)kSecAttrService: service,
     (__bridge NSString *)kSecReturnAttributes: (__bridge id)kCFBooleanTrue,
+    (__bridge NSString *)kSecAttrSynchronizable: (__bridge id)kCFBooleanTrue,
     (__bridge NSString *)kSecReturnData: (__bridge id)kCFBooleanFalse
   };
+
+
 
   return SecItemDelete((__bridge CFDictionaryRef) query);
 }
@@ -270,6 +273,35 @@ SecAccessControlCreateFlags accessControlValue(NSDictionary *options)
   };
 
   return SecItemDelete((__bridge CFDictionaryRef) query);
+}
+
+-(NSArray<NSString*>*)getAllServicesForSecurityClasses:(NSArray *)secItemClasses
+{
+  NSMutableDictionary *query = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+                                (__bridge id)kCFBooleanTrue, (__bridge id)kSecReturnAttributes,
+                                (__bridge id)kSecMatchLimitAll, (__bridge id)kSecMatchLimit,
+                                nil];
+  NSMutableArray<NSString*> *services = [NSMutableArray<NSString*> new];
+  for (id secItemClass in secItemClasses) {
+    [query setObject:secItemClass forKey:(__bridge id)kSecClass];
+    NSArray *result = nil;
+    CFTypeRef resultRef = NULL;
+    OSStatus osStatus = SecItemCopyMatching((__bridge CFDictionaryRef)query, (CFTypeRef*)&resultRef);
+    if (osStatus != noErr && osStatus != errSecItemNotFound) {
+      NSError *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:osStatus userInfo:nil];
+      @throw error;
+    } else if (osStatus != errSecItemNotFound) {
+      result = (__bridge NSArray*)(resultRef);
+      if (result != NULL) {
+        for (id entry in result) {
+          NSString *service = [entry objectForKey:(__bridge NSString *)kSecAttrService];
+          [services addObject:service];
+        }
+      }
+    }
+  }
+
+  return services;
 }
 
 #pragma mark - RNKeychain
@@ -306,7 +338,9 @@ RCT_EXPORT_METHOD(getSupportedBiometryType:(RCTPromiseResolveBlock)resolve
         return resolve(kBiometryTypeFaceID);
       }
     }
-    return resolve(kBiometryTypeTouchID);
+    if (context.biometryType == LABiometryTypeTouchID) {
+      return resolve(kBiometryTypeTouchID);
+    }
   }
 
   return resolve([NSNull null]);
@@ -320,10 +354,13 @@ RCT_EXPORT_METHOD(setGenericPasswordForOptions:(NSDictionary *)options
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
   NSString *service = serviceValue(options);
+  // NSString *accessGroup = accessGroupValue(options);
   NSDictionary *attributes = attributes = @{
     (__bridge NSString *)kSecClass: (__bridge id)(kSecClassGenericPassword),
     (__bridge NSString *)kSecAttrService: service,
     (__bridge NSString *)kSecAttrAccount: username,
+    // (__bridge NSString *)kSecAttrAccessGroup: accessGroup,
+    (__bridge NSString *)kSecAttrSynchronizable: (__bridge id)kCFBooleanTrue,
     (__bridge NSString *)kSecValueData: [password dataUsingEncoding:NSUTF8StringEncoding]
   };
 
@@ -342,8 +379,10 @@ RCT_EXPORT_METHOD(getGenericPasswordForOptions:(NSDictionary * __nullable)option
   NSDictionary *query = @{
     (__bridge NSString *)kSecClass: (__bridge id)(kSecClassGenericPassword),
     (__bridge NSString *)kSecAttrService: service,
-    (__bridge NSString *)kSecReturnAttributes: (__bridge id)kCFBooleanTrue,
     (__bridge NSString *)kSecReturnData: (__bridge id)kCFBooleanTrue,
+    (__bridge NSString *)kSecReturnAttributes: (__bridge id)kCFBooleanTrue,
+    (__bridge NSString *)kSecReturnRef: (__bridge id)kCFBooleanTrue,
+    (__bridge NSString *)kSecAttrSynchronizable: (__bridge id)kCFBooleanTrue,
     (__bridge NSString *)kSecMatchLimit: (__bridge NSString *)kSecMatchLimitOne,
     (__bridge NSString *)kSecUseOperationPrompt: authenticationPrompt
   };
@@ -547,5 +586,18 @@ RCT_EXPORT_METHOD(setSharedWebCredentialsForServer:(NSString *)server
   });
 }
 #endif
+
+RCT_EXPORT_METHOD(getAllGenericPasswordServices:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+{
+  @try {
+    NSArray *secItemClasses = [NSArray arrayWithObjects:
+                              (__bridge id)kSecClassGenericPassword,
+                              nil];
+    NSArray *services = [self getAllServicesForSecurityClasses:secItemClasses];
+    return resolve(services);
+  } @catch (NSError *nsError) {
+    return rejectWithError(reject, nsError);
+  }
+}
 
 @end
